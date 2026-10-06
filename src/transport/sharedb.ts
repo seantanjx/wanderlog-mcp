@@ -131,7 +131,14 @@ export class ShareDBClient extends EventEmitter {
       }, 10_000);
 
       ws.on("open", () => {
-        this.send({ a: "hs", id: null, protocol: 1, protocolMinor: 2 });
+        // The socket can already be closing by the time "open" fires; a throw
+        // here would escape as an uncaught exception and kill the process.
+        try {
+          this.send({ a: "hs", id: null, protocol: 1, protocolMinor: 2 });
+        } catch (err) {
+          clearTimeout(handshakeTimeout);
+          reject(err);
+        }
       });
 
       ws.on("message", (raw) => {
@@ -149,6 +156,9 @@ export class ShareDBClient extends EventEmitter {
       ws.on("close", (code: number) => {
         clearTimeout(handshakeTimeout);
         const wasSubscribed = this.subscribed;
+        // No-op if the handshake already resolved; otherwise a close before
+        // the handshake would leave connect() pending forever.
+        reject(new WanderlogError("WebSocket closed before handshake", "ws_closed"));
         this.handshakeComplete = false;
         this.subscribed = false;
         this.failAllPending(new WanderlogError("WebSocket closed", "ws_closed"));
@@ -297,7 +307,17 @@ export class ShareDBClient extends EventEmitter {
         .then(() => {
           this.reconnectAttempts = 0;
           if (resubscribe) {
-            void this.subscribe().then(() => this.emit("reconnected"));
+            // A drop mid-resubscribe rejects here via failAllPending; without a
+            // catch that is an unhandled rejection and Node exits. The close
+            // handler has already scheduled another reconnect, and the next
+            // tool call re-subscribes lazily, so just log it.
+            this.subscribe()
+              .then(() => this.emit("reconnected"))
+              .catch((err: unknown) => {
+                console.error(
+                  `[wanderdog] Resubscribe after reconnect failed: ${err instanceof Error ? err.message : String(err)}`,
+                );
+              });
           } else {
             this.emit("reconnected");
           }
