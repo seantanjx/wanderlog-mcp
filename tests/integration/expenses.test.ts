@@ -81,7 +81,9 @@ describe("Expense tools (live round-trip)", () => {
     const res = await listExpenses(ctx, { trip_key: tripKey! });
     expect(res.isError).not.toBe(true);
     expect(res.content[0]!.text).toContain("Ramen lunch");
-    expect(res.content[0]!.text).toContain("USD 42.5");
+    expect(JSON.parse(res.content[0]!.text).expenses).toContainEqual(
+      expect.objectContaining({ description: "Ramen lunch", amount: 42.5, currency: "USD" }),
+    );
   }, 15_000);
 
   it("edit_expense changes amount, currency, category, description (server-confirmed)", async () => {
