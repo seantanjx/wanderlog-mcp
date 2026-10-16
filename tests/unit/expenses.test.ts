@@ -132,16 +132,47 @@ describe("listExpenses", () => {
     const result = await listExpenses(ctx, { trip_key: "budgettripkey" });
     expect(result.isError).toBeUndefined();
     const text = result.content[0]!.text;
-    expect(text).toContain("4 expenses");
-    expect(text).toContain("Lunch at Ichiran Ramen");
+    const body = JSON.parse(text);
+    expect(body.count).toBe(4);
+    expect(body.expenses[0]).toMatchObject({
+      amount: 12.5,
+      currency: "USD",
+      description: "Lunch at Ichiran Ramen",
+      category: "food",
+      date: "2026-06-01",
+    });
     expect(text).toContain("Museum entry");
+  });
+
+  it("shows who paid and who the expense was split with", async () => {
+    const trip = fresh(budgetTrip);
+    trip.contributors = [
+      { id: 3656632, username: "sean", name: "Sean" },
+      { id: 42, username: "amy", name: "Amy" },
+    ];
+    trip.itinerary.budget!.expenses![0]!.splitWith = {
+      type: "individuals",
+      users: [
+        { type: "registered", id: 3656632 },
+        { type: "registered", id: 42 },
+      ],
+    };
+    const { ctx } = makeFakeContext(trip);
+    const text = (await listExpenses(ctx, { trip_key: "budgettripkey", description: "Lunch" }))
+      .content[0]!.text;
+    const body = JSON.parse(text);
+    expect(body.expenses[0]).toMatchObject({
+      paid_by: "Sean",
+      split: { type: "individuals", count: 2, people: ["Sean", "Amy"] },
+    });
+    expect(text).not.toContain("3656632");
   });
 
   it("applies filters to the listing", async () => {
     const { ctx } = makeFakeContext(budgetTrip);
     const result = await listExpenses(ctx, { trip_key: "budgettripkey", currency: "EUR" });
     const text = result.content[0]!.text;
-    expect(text).toContain("1 expense");
+    expect(JSON.parse(text).count).toBe(1);
     expect(text).toContain("Museum entry");
     expect(text).not.toContain("Subway");
   });

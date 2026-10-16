@@ -1,4 +1,4 @@
-import type { Expense, TripPlan } from "../types.js";
+import type { Contributor, Expense, TripPlan } from "../types.js";
 
 /** A located expense: the live array index plus the expense object itself. */
 export type ExpenseMatch = {
@@ -71,4 +71,60 @@ export function formatExpense(expense: Expense): string {
   const meta = [expense.category, expense.date].filter(Boolean).join(", ");
   const suffix = meta ? ` (${meta})` : "";
   return `${currency} ${amount} — ${description}${suffix}`;
+}
+
+type UserRef = { type?: string; id?: number; name?: string; [k: string]: unknown };
+
+function nameLookup(trip: TripPlan): (id: number | undefined) => string {
+  const people: Contributor[] = [...(trip.contributors ?? []), ...(trip.editors ?? [])];
+  const byId = new Map<number, string>();
+  for (const p of people) byId.set(p.id, p.name?.trim() || p.username);
+  return (id) => (id !== undefined && byId.get(id)) || "an unnamed traveler";
+}
+
+function payerName(expense: Expense, nameOf: (id: number | undefined) => string): string {
+  const ref = expense.paidByUser as UserRef | undefined;
+  const id = typeof ref?.id === "number" ? ref.id : (expense.paidByUserId as number | undefined);
+  if (ref?.type && ref.type !== "registered" && ref.name) return ref.name;
+  return nameOf(id);
+}
+
+export type ExpenseSplit =
+  | { type: "everyone" }
+  | { type: "individuals"; count: number; people: string[] }
+  | { type: "none_recorded" };
+
+function describeSplit(expense: Expense, nameOf: (id: number | undefined) => string): ExpenseSplit {
+  const split = expense.splitWith as { type?: string; users?: UserRef[] } | undefined;
+  if (split?.type === "everyone") return { type: "everyone" };
+  const users = split?.users ?? [];
+  if (users.length === 0) return { type: "none_recorded" };
+  const people = users.map((u) =>
+    u.type && u.type !== "registered" && u.name ? u.name : nameOf(u.id),
+  );
+  return { type: "individuals", count: users.length, people };
+}
+
+export type ExpenseSummary = {
+  amount: number | null;
+  currency: string | null;
+  description: string | null;
+  category: string | null;
+  date: string | null;
+  paid_by: string;
+  split: ExpenseSplit;
+};
+
+/** Structured expense with who paid and how it was split; names are resolved from the trip's travelers, never raw IDs. */
+export function summarizeExpense(expense: Expense, trip: TripPlan): ExpenseSummary {
+  const nameOf = nameLookup(trip);
+  return {
+    amount: expense.amount?.amount ?? null,
+    currency: expense.amount?.currencyCode ?? null,
+    description: expense.description?.trim() || null,
+    category: expense.category ?? null,
+    date: expense.date ?? null,
+    paid_by: payerName(expense, nameOf),
+    split: describeSplit(expense, nameOf),
+  };
 }
