@@ -132,8 +132,15 @@ describe("listExpenses", () => {
     const result = await listExpenses(ctx, { trip_key: "budgettripkey" });
     expect(result.isError).toBeUndefined();
     const text = result.content[0]!.text;
-    expect(text).toContain("4 expenses");
-    expect(text).toContain("Lunch at Ichiran Ramen");
+    const body = JSON.parse(text);
+    expect(body.count).toBe(4);
+    expect(body.expenses[0]).toMatchObject({
+      amount: 12.5,
+      currency: "USD",
+      description: "Lunch at Ichiran Ramen",
+      category: "food",
+      date: "2026-06-01",
+    });
     expect(text).toContain("Museum entry");
   });
 
@@ -153,7 +160,11 @@ describe("listExpenses", () => {
     const { ctx } = makeFakeContext(trip);
     const text = (await listExpenses(ctx, { trip_key: "budgettripkey", description: "Lunch" }))
       .content[0]!.text;
-    expect(text).toContain("paid by Sean; split with 2 people: Sean, Amy");
+    const body = JSON.parse(text);
+    expect(body.expenses[0]).toMatchObject({
+      paid_by: "Sean",
+      split: { type: "individuals", count: 2, people: ["Sean", "Amy"] },
+    });
     expect(text).not.toContain("3656632");
   });
 
@@ -161,7 +172,7 @@ describe("listExpenses", () => {
     const { ctx } = makeFakeContext(budgetTrip);
     const result = await listExpenses(ctx, { trip_key: "budgettripkey", currency: "EUR" });
     const text = result.content[0]!.text;
-    expect(text).toContain("1 expense");
+    expect(JSON.parse(text).count).toBe(1);
     expect(text).toContain("Museum entry");
     expect(text).not.toContain("Subway");
   });
