@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { AppContext } from "../context.js";
 import { WanderlogError } from "../errors.js";
-import { findExpenseMatches, formatExpense } from "./expenses-shared.js";
+import { findExpenseMatches, formatExpenseDetail } from "./expenses-shared.js";
 
 export const listExpensesInputSchema = {
   trip_key: z.string().min(1).describe("The trip whose expenses to list."),
@@ -31,7 +31,7 @@ export const listExpensesInputSchema = {
 export const listExpensesDescription = `
 Lists budget expenses on a Wanderlog trip, newest entries last.
 
-Each line shows the amount, currency, description, category, and date. Use the optional
+Each line shows the amount, currency, description, category, date, who paid, and how it was split (with whom and how many people). Use the optional
 description / date / amount / currency filters to narrow the list — handy for finding the exact
 expense to pass to wanderlog_remove_expense or wanderlog_edit_expense when several are similar.
 
@@ -67,7 +67,9 @@ export async function listExpenses(
       return { content: [{ type: "text", text }] };
     }
 
-    const lines = matches.map((m, i) => `  ${i + 1}. ${formatExpense(m.expense)}`).join("\n");
+    const lines = matches
+      .map((m, i) => `  ${i + 1}. ${formatExpenseDetail(m.expense, trip)}`)
+      .join("\n");
     const noun = matches.length === 1 ? "expense" : "expenses";
     return {
       content: [{ type: "text", text: `${matches.length} ${noun} in "${trip.title}":\n${lines}` }],

@@ -137,6 +137,26 @@ describe("listExpenses", () => {
     expect(text).toContain("Museum entry");
   });
 
+  it("shows who paid and who the expense was split with", async () => {
+    const trip = fresh(budgetTrip);
+    trip.contributors = [
+      { id: 3656632, username: "sean", name: "Sean" },
+      { id: 42, username: "amy", name: "Amy" },
+    ];
+    trip.itinerary.budget!.expenses![0]!.splitWith = {
+      type: "individuals",
+      users: [
+        { type: "registered", id: 3656632 },
+        { type: "registered", id: 42 },
+      ],
+    };
+    const { ctx } = makeFakeContext(trip);
+    const text = (await listExpenses(ctx, { trip_key: "budgettripkey", description: "Lunch" }))
+      .content[0]!.text;
+    expect(text).toContain("paid by Sean; split with 2 people: Sean, Amy");
+    expect(text).not.toContain("3656632");
+  });
+
   it("applies filters to the listing", async () => {
     const { ctx } = makeFakeContext(budgetTrip);
     const result = await listExpenses(ctx, { trip_key: "budgettripkey", currency: "EUR" });

@@ -1,4 +1,4 @@
-import type { Expense, TripPlan } from "../types.js";
+import type { Contributor, Expense, TripPlan } from "../types.js";
 
 /** A located expense: the live array index plus the expense object itself. */
 export type ExpenseMatch = {
@@ -71,4 +71,39 @@ export function formatExpense(expense: Expense): string {
   const meta = [expense.category, expense.date].filter(Boolean).join(", ");
   const suffix = meta ? ` (${meta})` : "";
   return `${currency} ${amount} — ${description}${suffix}`;
+}
+
+type UserRef = { type?: string; id?: number; name?: string; [k: string]: unknown };
+
+function nameLookup(trip: TripPlan): (id: number | undefined) => string {
+  const people: Contributor[] = [...(trip.contributors ?? []), ...(trip.editors ?? [])];
+  const byId = new Map<number, string>();
+  for (const p of people) byId.set(p.id, p.name?.trim() || p.username);
+  return (id) => (id !== undefined && byId.get(id)) || "an unnamed traveler";
+}
+
+function describePayer(expense: Expense, nameOf: (id: number | undefined) => string): string {
+  const ref = expense.paidByUser as UserRef | undefined;
+  const id = typeof ref?.id === "number" ? ref.id : (expense.paidByUserId as number | undefined);
+  if (ref?.type && ref.type !== "registered" && ref.name) return ref.name;
+  return nameOf(id);
+}
+
+function describeSplit(expense: Expense, nameOf: (id: number | undefined) => string): string {
+  const split = expense.splitWith as { type?: string; users?: UserRef[] } | undefined;
+  if (!split) return "no split recorded";
+  if (split.type === "everyone") return "split among everyone";
+  const users = split.users ?? [];
+  if (users.length === 0) return "no split recorded";
+  const names = users.map((u) =>
+    u.type && u.type !== "registered" && u.name ? u.name : nameOf(u.id),
+  );
+  const noun = users.length === 1 ? "person" : "people";
+  return `split with ${users.length} ${noun}: ${names.join(", ")}`;
+}
+
+/** `formatExpense` plus who paid and how it was split, with names resolved from the trip's travelers. */
+export function formatExpenseDetail(expense: Expense, trip: TripPlan): string {
+  const nameOf = nameLookup(trip);
+  return `${formatExpense(expense)} — paid by ${describePayer(expense, nameOf)}; ${describeSplit(expense, nameOf)}`;
 }
